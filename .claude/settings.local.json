@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python app.py:*)",
+      "Bash(ping:*)",
+      "Bash(curl:*)",
+      "Bash(del test_yfinance.py)",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
