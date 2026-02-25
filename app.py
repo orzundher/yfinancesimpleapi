@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import yfinance as yf
 from datetime import datetime, timedelta
 import uvicorn
@@ -14,6 +15,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="YFinance Simple API", version=__version__)
+
+# Habilitar CORS para aceptar cualquier cliente
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Caché para el tipo de cambio USD/EUR
 exchange_rate_cache = {
@@ -161,6 +171,42 @@ async def version():
         'version_info': __version_info__,
         'api_name': 'YFinance Simple API'
     }
+
+
+@app.get('/info')
+async def info():
+    """
+    Endpoint que describe los endpoints disponibles y cómo usarlos.
+    """
+    info_payload = {
+        'api': 'YFinance Simple API',
+        'version': __version__,
+        'endpoints': [
+            {
+                'path': '/precio/{ticker}',
+                'method': 'GET',
+                'description': 'Devuelve el precio del ticker en USD y convertido a EUR.',
+                'usage_example': '/precio/AAPL'
+            },
+            {
+                'path': '/health',
+                'method': 'GET',
+                'description': 'Health check básico con estado y caché.'
+            },
+            {
+                'path': '/version',
+                'method': 'GET',
+                'description': 'Información de versión de la API.'
+            }
+        ],
+        'examples': {
+            'curl_precio': "curl -s 'http://localhost:3010/precio/AAPL'",
+            'httpie_precio': "http GET :3010/precio/AAPL"
+        },
+        'notes': 'Reemplaza el puerto y host según donde esté desplegada la API.'
+    }
+
+    return JSONResponse(content=info_payload)
 
 
 if __name__ == '__main__':
