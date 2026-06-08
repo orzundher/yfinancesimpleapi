@@ -1,8 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import yfinance as yf
 from datetime import datetime, timedelta
+from typing import List, Union
 import uvicorn
 import logging
 from version import __version__, __version_info__
@@ -80,13 +82,15 @@ def get_usdeur_rate():
     raise ValueError("No se pudo obtener el tipo de cambio USD/EUR")
 
 
-def get_ticker_price_in_euros(ticker):
+def get_ticker_price_in_euros(ticker, usdeur_rate=None):
     """
     Obtiene el precio actual de un ticker y lo convierte a euros.
+    Si não se proporciona usdeur_rate, se obtiene uno nuevo (usando caché).
     """
     try:
-        # Obtener el tipo de cambio USD/EUR
-        usdeur_rate = get_usdeur_rate()
+        # Obtener el tipo de cambio USD/EUR si no se proporcionó
+        if usdeur_rate is None:
+            usdeur_rate = get_usdeur_rate()
 
         # Obtener el precio del ticker
         logger.info(f"Consultando precio de {ticker}...")
@@ -120,8 +124,12 @@ def get_ticker_price_in_euros(ticker):
         }
 
     except Exception as e:
-        logger.error(f"Error al obtener precio: {str(e)}", exc_info=True)
+        logger.error(f"Error al obtener precio: {str(e)}")
         raise
+
+
+class TickersRequest(BaseModel):
+    tickers: List[str]
 
 
 @app.get('/precio/{ticker}')
@@ -144,6 +152,34 @@ async def get_precio(ticker: str):
             'error': f'Error interno del servidor: {str(e)}',
             'ticker': ticker
         })
+
+
+@app.post('/precios')
+async def get_precios_batch(request: TickersRequest):
+    """
+    Endpoint para obtener los precios de múltiples tickers en una sola llamada.
+    Optimiza la conversión a euros obteniendo el tipo de cambio una sola vez.
+    """
+    try:
+        # Obtener el tipo de cambio una sola vez para toda la lista
+        usdeur_rate = get_usdeur_rate()
+        
+        results = []
+        for ticker in request.tickers:
+            try:
+                # Pasar el rate ya obtenido para optimizar
+                price_data = get_ticker_price_in_euros(ticker, usdeur_rate=usdeur_rate)
+                results.append(price_data)
+            except Exception:
+                # En caso de error para un ticker, devolver false en esa posición
+                logger.warning(f"Error al procesar ticker {ticker} en lote, devolviendo false")
+                results.append(False)
+        
+        return results
+
+    except Exception as e:
+        logger.error(f"Error general en endpoint batch: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get('/health')
@@ -187,6 +223,12 @@ async def info():
                 'method': 'GET',
                 'description': 'Devuelve el precio del ticker en USD y convertido a EUR.',
                 'usage_example': '/precio/AAPL'
+            },
+            {
+                'path': '/precios',
+                'method': 'POST',
+                'description': 'Devuelve una lista de precios para múltiples tickers. Optimizado para conversión EUR.',
+                'usage_example': 'POST /precios {"tickers": ["AAPL", "MSFT"]}'
             },
             {
                 'path': '/health',
