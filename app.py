@@ -1,10 +1,12 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Security, Query
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security.api_key import APIKeyHeader, APIKeyQuery
 import yfinance as yf
 from datetime import datetime, timedelta
 import uvicorn
 import logging
+import os
 from version import __version__, __version_info__
 
 # Configurar logging
@@ -25,6 +27,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# API Key configuration
+API_KEY = os.environ.get("API_KEY", "")
+API_KEY_NAME = "X-API-Key"
+
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+api_key_query = APIKeyQuery(name="api_key", auto_error=False)
+
+
+async def get_api_key(
+    key_header: str = Security(api_key_header),
+    key_query: str = Security(api_key_query),
+):
+    if not API_KEY:
+        raise HTTPException(status_code=500, detail="API_KEY no configurada en el servidor")
+    provided = key_header or key_query
+    if provided == API_KEY:
+        return provided
+    raise HTTPException(status_code=403, detail="API key inválida o ausente")
+
+
 # Caché para el tipo de cambio USD/EUR
 exchange_rate_cache = {
     'rate': None,
@@ -32,7 +54,6 @@ exchange_rate_cache = {
 }
 
 CACHE_DURATION_MINUTES = 5
-
 
 def get_usdeur_rate():
     """
@@ -125,7 +146,7 @@ def get_ticker_price_in_euros(ticker):
 
 
 @app.get('/precio/{ticker}')
-async def get_precio(ticker: str):
+async def get_precio(ticker: str, api_key: str = Security(get_api_key)):
     """
     Endpoint para obtener el precio de un ticker en euros.
     """
@@ -200,8 +221,9 @@ async def info():
             }
         ],
         'examples': {
-            'curl_precio': "curl -s 'http://localhost:3010/precio/AAPL'",
-            'httpie_precio': "http GET :3010/precio/AAPL"
+            'curl_precio_header': "curl -s -H 'X-API-Key: TU_API_KEY' 'http://localhost:3010/precio/AAPL'",
+            'curl_precio_query': "curl -s 'http://localhost:3010/precio/AAPL?api_key=TU_API_KEY'",
+            'httpie_precio': "http GET :3010/precio/AAPL X-API-Key:TU_API_KEY"
         },
         'notes': 'Reemplaza el puerto y host según donde esté desplegada la API.'
     }
