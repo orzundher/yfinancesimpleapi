@@ -12,10 +12,21 @@ import os
 from version import __version__, __version_info__
 
 # Configurar logging
+log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format=log_format
 )
+
+# Apply the same format to uvicorn loggers
+for uvicorn_logger in ("uvicorn", "uvicorn.access", "uvicorn.error"):
+    uv_logger = logging.getLogger(uvicorn_logger)
+    uv_logger.handlers = []
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(log_format))
+    uv_logger.addHandler(handler)
+    uv_logger.propagate = False
+
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="YFinance Simple API", version=__version__)
